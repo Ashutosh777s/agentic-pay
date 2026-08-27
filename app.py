@@ -2,52 +2,64 @@ import streamlit as st
 import re
 from razorpay_client import RazorpayService
 
-st.set_page_config(
-    page_title="AgenticPay | Autonomous AI Commerce",
-    page_icon="⚡",
-    layout="centered"
-)
+st.set_page_config(page_title="AgenticPay", layout="centered")
 
-st.title("⚡ AgenticPay")
-st.subheader("Autonomous AI Agent for Contextual Payments & Checkout")
-st.caption("Built for Razorpay Buildathon | Track: AI Growth & Agentic Commerce")
+st.title("AgenticPay")
+st.caption("Contextual Payments Engine - Razorpay Buildathon 2026")
 
-# Initialize Razorpay Service
-rzp = RazorpayService()
+# Initialize SDK wrapper
+rzp_service = RazorpayService()
 
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "assistant", "content": "Namaste! Main AgenticPay Agent hoon. Main aapki conversational checkout me help kar sakta hoon. Aapko kya purchase karna hai?"}
+def parse_amount(user_text):
+    # Regex to grab numerical pricing from prompt
+    match = re.search(r'\b\d+(?:,\d+)*(?:\.\d+)?\b', user_text)
+    if match:
+        clean_num = match.group().replace(',', '')
+        return float(clean_num)
+    return 500.0  # Fallback default value
+
+# State management for chat
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = [
+        {
+            "role": "assistant",
+            "content": "Hello! Enter your purchase details below to generate a direct checkout link."
+        }
     ]
 
-# Render Chat History
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.write(msg["content"])
+# Render current chat sequence
+for message in st.session_state.chat_history:
+    with st.chat_message(message["role"]):
+        st.write(message["content"])
 
-# User Input
-if prompt := st.chat_input("Ex: Mujhe ₹8000 ka SSD purchase karna hai..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
+# User prompt execution
+user_input = st.chat_input("E.g., Order wireless earbuds for 1800...")
+
+if user_input:
+    st.session_state.chat_history.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
-        st.write(prompt)
+        st.write(user_input)
 
     with st.chat_message("assistant"):
-        with st.spinner("Processing intent and generating secure Razorpay checkout link..."):
-            numbers = re.findall(r'\b\d+(?:,\d+)*(?:\.\d+)?\b', prompt)
-            amount = float(numbers[0].replace(',', '')) if numbers else 500.0
-            
-            res = rzp.create_payment_link(
-                amount_in_inr=amount,
-                description=f"Agentic Order Intent: {prompt[:30]}..."
-            )
-            
-            if res["status"] == "success":
-                reply = f"Aapka request process ho gaya hai. Total amount: **₹{amount}**. Niche button par click karke instant payment complete karein:"
-                st.write(reply)
-                st.link_button("👉 Complete Payment via Razorpay", res["payment_url"])
-            else:
-                reply = f"Order ready hai (₹{amount}). Demo Razorpay Checkout Link active."
-                st.write(reply)
+        with st.spinner("Processing purchase intent..."):
+            extracted_price = parse_amount(user_input)
+            item_summary = f"Agentic Checkout: {user_input[:30]}"
 
-            st.session_state.messages.append({"role": "assistant", "content": reply})
-          
+            res = rzp_service.create_payment_link(
+                amount=extracted_price,
+                description=item_summary
+            )
+
+            if res.get("success"):
+                checkout_url = res.get("url")
+                response_text = f"Payment link generated for INR {extracted_price:.2f}."
+                st.write(response_text)
+                st.link_button("Complete Payment via Razorpay", checkout_url)
+            else:
+                response_text = f"Could not create live link for INR {extracted_price:.2f}. Check API key configuration."
+                st.write(response_text)
+
+            st.session_state.chat_history.append({
+                "role": "assistant",
+                "content": response_text
+            })
